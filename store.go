@@ -541,7 +541,7 @@ func (r *Repo) commitsBetween(base, head string) (ahead []string, behind int) {
 // ---------------- store ----------------
 
 type Store struct {
-	mu           sync.Mutex
+	mu           sync.RWMutex
 	Users        map[string]*User
 	Repos        map[string]*Repo
 	RepoByID     map[int64]*Repo
@@ -609,6 +609,13 @@ func (st *Store) findRepo(owner, name string) *Repo {
 		}
 	}
 	return nil
+}
+
+// findRepoExact is findRepo without the owner-adoption side effect: it only
+// hits when the repo is stored under exactly this owner. Safe under a read
+// lock; callers fall back to findRepo (write lock) on a miss.
+func (st *Store) findRepoExact(owner, name string) *Repo {
+	return st.Repos[repoKey(owner, name)]
 }
 
 // adoptOwner renames the default (token) user to the given login.

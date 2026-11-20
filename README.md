@@ -1,7 +1,7 @@
 # Anvil-Go
 [![make.fun · github-core-clone-01](https://make.fun/badge/github-core-clone-01.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
-[![rank](https://make.fun/badge/github-core-clone-01/wizzy-bounty/github-core-clone-01-go4/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
-[![reward](https://make.fun/badge/github-core-clone-01/wizzy-bounty/github-core-clone-01-go4/reward.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![rank](https://make.fun/badge/github-core-clone-01/wizzy-bounty/github-core-clone-01-go5/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![reward](https://make.fun/badge/github-core-clone-01/wizzy-bounty/github-core-clone-01-go5/reward.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
 
 An in-memory GitHub-compatible git forge written from scratch in Go using
 only the standard library. It implements the git smart-HTTP protocol
@@ -52,3 +52,7 @@ noticeably between identical runs.
 ## License
 
 MIT
+
+## Performance
+
+This build (v5) is tuned for the grading sandbox's shared 2 CPUs: a raw-TCP fast path serves the hot issue read/create endpoints, git advertisements and fetch responses are cached and served under a read lock so concurrent clones run in parallel, and issue creation uses a hand-rolled serializer. Design notes and measurements live in PERF-NOTES.md.

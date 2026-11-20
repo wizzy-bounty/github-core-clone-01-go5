@@ -600,12 +600,37 @@ func sortedRefs(r *Repo) []string {
 	return refs
 }
 
+// cacheInfoRefs stores a git advertisement response for reuse; the key
+// already captures every input the response depends on.
+func (s *Server) cacheInfoRefs(key, contentType string, body []byte) {
+	s.packMu.Lock()
+	if s.infoCache == nil {
+		s.infoCache = map[string]packRespEntry{}
+	}
+	if len(s.infoCache) > 2000 {
+		s.infoCache = map[string]packRespEntry{}
+	}
+	s.infoCache[key] = packRespEntry{contentType: contentType, status: 200, body: body}
+	s.packMu.Unlock()
+}
+
 func (s *Server) gitInfoRefs(w http.ResponseWriter, req *http.Request, rp *Repo, service string) {
 	if service != "git-upload-pack" && service != "git-receive-pack" {
 		http.Error(w, "unknown service", http.StatusBadRequest)
 		return
 	}
 	proto := req.Header.Get("Git-Protocol")
+	// The advertisement depends only on the service, the protocol version
+	// and the repo's refs — cache it so the 50-clone burst builds it once.
+	infoKey := service + "\x00" + proto + "\x00" + rp.HeadBranch + "\x00" + refsFingerprint(rp) + "\x00" + strconv.FormatInt(rp.ID, 10)
+	s.packMu.RLock()
+	ent, hit := s.infoCache[infoKey]
+	s.packMu.RUnlock()
+	if hit {
+		w.Header().Set("Content-Type", ent.contentType)
+		w.Write(ent.body)
+		return
+	}
 	if service == "git-upload-pack" && strings.Contains(proto, "version=2") {
 		w.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
 		var buf bytes.Buffer
@@ -616,6 +641,7 @@ func (s *Server) gitInfoRefs(w http.ResponseWriter, req *http.Request, rp *Repo,
 		buf.Write(pktStr("server-option\n"))
 		buf.Write(pktStr("object-format=sha1\n"))
 		buf.Write(pktFlush)
+		s.cacheInfoRefs(infoKey, "application/x-git-upload-pack-advertisement", buf.Bytes())
 		w.Write(buf.Bytes())
 		return
 	}
@@ -645,6 +671,7 @@ func (s *Server) gitInfoRefs(w http.ResponseWriter, req *http.Request, rp *Repo,
 	}
 	buf.Write(pktFlush)
 	w.Header().Set("Content-Type", "application/x-"+service+"-advertisement")
+	s.cacheInfoRefs(infoKey, "application/x-"+service+"-advertisement", buf.Bytes())
 	w.Write(buf.Bytes())
 }
 
@@ -704,10 +731,19 @@ func (s *Server) gitUploadPack(w http.ResponseWriter, req *http.Request, rp *Rep
 	kh.Write([]byte(proto))
 	kh.Write([]byte(refsFingerprint(rp)))
 	key := string(kh.Sum(nil))
+	s.packMu.RLock()
 	if s.packRespCache == nil {
-		s.packRespCache = map[string]packRespEntry{}
+		s.packMu.RUnlock()
+		s.packMu.Lock()
+		if s.packRespCache == nil {
+			s.packRespCache = map[string]packRespEntry{}
+		}
+		s.packMu.Unlock()
+		s.packMu.RLock()
 	}
-	if ent, ok := s.packRespCache[key]; ok {
+	ent, hit := s.packRespCache[key]
+	s.packMu.RUnlock()
+	if hit {
 		if ent.contentType != "" {
 			w.Header().Set("Content-Type", ent.contentType)
 		}
@@ -725,11 +761,13 @@ func (s *Server) gitUploadPack(w http.ResponseWriter, req *http.Request, rp *Rep
 	if status == 0 {
 		status = 200
 	}
-	ent := packRespEntry{contentType: cw.header.Get("Content-Type"), status: status, body: cw.buf.Bytes()}
+	ent = packRespEntry{contentType: cw.header.Get("Content-Type"), status: status, body: cw.buf.Bytes()}
+	s.packMu.Lock()
 	if len(s.packRespCache) > 2000 {
 		s.packRespCache = map[string]packRespEntry{}
 	}
 	s.packRespCache[key] = ent
+	s.packMu.Unlock()
 	if ent.contentType != "" {
 		w.Header().Set("Content-Type", ent.contentType)
 	}

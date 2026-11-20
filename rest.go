@@ -61,8 +61,12 @@ func writeRawJSON(w http.ResponseWriter, status int, data []byte) {
 // issueViewKey fingerprints every Issue field that issueView renders, so a
 // cached serialization is only reused while the view is unchanged.
 func issueViewKey(req *http.Request, rp *Repo, is *Issue) string {
+	return issueViewKeyBase(baseURL(req), rp, is)
+}
+
+func issueViewKeyBase(base string, rp *Repo, is *Issue) string {
 	var sb strings.Builder
-	sb.WriteString(baseURL(req))
+	sb.WriteString(base)
 	sb.WriteString("|")
 	sb.WriteString(strconv.FormatInt(rp.ID, 10))
 	sb.WriteString("|")
